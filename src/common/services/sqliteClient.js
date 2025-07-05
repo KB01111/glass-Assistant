@@ -1,5 +1,6 @@
-const sqlite3 = require('sqlite3').verbose();
+const initSqlJs = require('sql.js');
 const path = require('path');
+const fs = require('fs');
 
 class SQLiteClient {
     constructor() {
@@ -8,36 +9,93 @@ class SQLiteClient {
         this.defaultUserId = 'default_user';
     }
 
-    connect(dbPath) {
-        return new Promise((resolve, reject) => {
-            if (this.db) {
-                console.log('[SQLiteClient] Already connected.');
-                return resolve();
+    async connect(dbPath) {
+        if (this.db) {
+            console.log('[SQLiteClient] Already connected.');
+            return;
+        }
+
+        try {
+            this.dbPath = dbPath;
+            const SQL = await initSqlJs();
+
+            // Load existing database or create new one
+            if (fs.existsSync(this.dbPath)) {
+                const filebuffer = fs.readFileSync(this.dbPath);
+                this.db = new SQL.Database(filebuffer);
+            } else {
+                this.db = new SQL.Database();
             }
 
-            this.dbPath = dbPath;
-            this.db = new sqlite3.Database(this.dbPath, (err) => {
-                if (err) {
-                    console.error('[SQLiteClient] Could not connect to database', err);
-                    return reject(err);
+            console.log('[SQLiteClient] Connected successfully to:', this.dbPath);
+
+            // SQL.js doesn't support WAL mode, so we'll skip this
+            console.log('[SQLiteClient] WAL mode not supported in SQL.js, using default mode');
+        } catch (error) {
+            console.error('[SQLiteClient] Could not connect to database', error);
+            throw error;
+        }
+    }
+
+    saveToFile() {
+        if (this.db && this.dbPath) {
+            const data = this.db.export();
+            fs.writeFileSync(this.dbPath, Buffer.from(data));
+        }
+    }
+
+    runQuery(sql, params = []) {
+        return new Promise((resolve, reject) => {
+            try {
+                const stmt = this.db.prepare(sql);
+                stmt.run(params);
+                this.saveToFile();
+                resolve({ changes: this.db.getRowsModified() });
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    getQuery(sql, params = []) {
+        return new Promise((resolve, reject) => {
+            try {
+                const stmt = this.db.prepare(sql);
+                stmt.bind(params);
+                if (stmt.step()) {
+                    const result = stmt.getAsObject();
+                    stmt.reset();
+                    resolve(result);
+                } else {
+                    stmt.reset();
+                    resolve(null);
                 }
-                console.log('[SQLiteClient] Connected successfully to:', this.dbPath);
-                
-                this.db.run('PRAGMA journal_mode = WAL;', (err) => {
-                    if (err) {
-                        return reject(err);
-                    }
-                    resolve();
-                });
-            });
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    allQuery(sql, params = []) {
+        return new Promise((resolve, reject) => {
+            try {
+                const results = [];
+                const stmt = this.db.prepare(sql);
+                stmt.bind(params);
+                while (stmt.step()) {
+                    results.push(stmt.getAsObject());
+                }
+                stmt.reset();
+                resolve(results);
+            } catch (error) {
+                reject(error);
+            }
         });
     }
 
     async initTables() {
-        return new Promise((resolve, reject) => {
+        try {
             const schema = `
-                PRAGMA journal_mode = WAL;
-
                 CREATE TABLE IF NOT EXISTS users (
                   uid           TEXT PRIMARY KEY,
                   display_name  TEXT NOT NULL,
@@ -47,7 +105,7 @@ class SQLiteClient {
                 );
 
                 CREATE TABLE IF NOT EXISTS sessions (
-                  id            TEXT PRIMARY KEY, 
+                  id            TEXT PRIMARY KEY,
                   uid           TEXT NOT NULL,
                   title         TEXT,
                   started_at    INTEGER,
@@ -104,15 +162,14 @@ class SQLiteClient {
                 );
             `;
 
-            this.db.exec(schema, (err) => {
-                if (err) {
-                    console.error('Failed to create tables:', err);
-                    return reject(err);
-                }
-                console.log('All tables are ready.');
-                            this.initDefaultData().then(resolve).catch(reject);
-            });
-        });
+            this.db.exec(schema);
+            this.saveToFile();
+            console.log('All tables are ready.');
+            await this.initDefaultData();
+        } catch (error) {
+            console.error('Failed to create tables:', error);
+            throw error;
+        }
     }
 
     async initDefaultData() {
@@ -159,71 +216,56 @@ class SQLiteClient {
     }
 
     async findOrCreateUser(user) {
-        return new Promise((resolve, reject) => {
+        try {
             const { uid, display_name, email } = user;
             const now = Math.floor(Date.now() / 1000);
 
             const query = `
                 INSERT INTO users (uid, display_name, email, created_at)
                 VALUES (?, ?, ?, ?)
-                ON CONFLICT(uid) DO UPDATE SET 
-                    display_name=excluded.display_name, 
+                ON CONFLICT(uid) DO UPDATE SET
+                    display_name=excluded.display_name,
                     email=excluded.email
             `;
-            
-            this.db.run(query, [uid, display_name, email, now], (err) => {
-                if (err) {
-                    console.error('Failed to find or create user in SQLite:', err);
-                    return reject(err);
-                }
-                this.getUser(uid).then(resolve).catch(reject);
-            });
-        });
+
+            await this.runQuery(query, [uid, display_name, email, now]);
+            return await this.getUser(uid);
+        } catch (error) {
+            console.error('Failed to find or create user in SQLite:', error);
+            throw error;
+        }
     }
 
     async getUser(uid) {
-        return new Promise((resolve, reject) => {
-            this.db.get('SELECT * FROM users WHERE uid = ?', [uid], (err, row) => {
-                if (err) reject(err);
-                else resolve(row);
-            });
-        });
+        return await this.getQuery('SELECT * FROM users WHERE uid = ?', [uid]);
     }
 
     async saveApiKey(apiKey, uid = this.defaultUserId) {
-        return new Promise((resolve, reject) => {
-            this.db.run(
+        try {
+            const result = await this.runQuery(
                 'UPDATE users SET api_key = ? WHERE uid = ?',
-                [apiKey, uid],
-                function(err) {
-                    if (err) {
-                        console.error('SQLite: Failed to save API key:', err);
-                        reject(err);
-                    } else {
-                        console.log(`SQLite: API key saved for user ${uid}.`);
-                        resolve({ changes: this.changes });
-                    }
-                }
+                [apiKey, uid]
             );
-        });
+            console.log(`SQLite: API key saved for user ${uid}.`);
+            return result;
+        } catch (error) {
+            console.error('SQLite: Failed to save API key:', error);
+            throw error;
+        }
     }
 
     async getPresets(uid) {
-        return new Promise((resolve, reject) => {
+        try {
             const query = `
-                SELECT * FROM prompt_presets 
-                WHERE uid = ? OR is_default = 1 
+                SELECT * FROM prompt_presets
+                WHERE uid = ? OR is_default = 1
                 ORDER BY is_default DESC, title ASC
             `;
-            this.db.all(query, [uid], (err, rows) => {
-                if (err) {
-                    console.error('SQLite: Failed to get presets:', err);
-                    reject(err);
-                } else {
-                    resolve(rows);
-                }
-            });
-        });
+            return await this.allQuery(query, [uid]);
+        } catch (error) {
+            console.error('SQLite: Failed to get presets:', error);
+            throw error;
+        }
     }
 
     async getPresetTemplates() {

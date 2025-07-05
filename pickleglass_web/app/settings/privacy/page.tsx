@@ -20,6 +20,7 @@ export default function PrivacySettingsPage() {
   const tabs = [
     { id: 'profile', name: 'Personal profile', href: '/settings' },
     { id: 'privacy', name: 'Data & privacy', href: '/settings/privacy' },
+    { id: 'ai-models', name: 'AI Models', href: '/settings/ai-models' },
     { id: 'billing', name: 'Billing', href: '/settings/billing' },
   ]
 

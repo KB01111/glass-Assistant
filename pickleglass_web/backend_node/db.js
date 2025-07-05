@@ -1,11 +1,112 @@
 const path = require('path');
 const databaseInitializer = require('../../src/common/services/databaseInitializer');
-const Database = require('better-sqlite3');
+const initSqlJs = require('sql.js');
+const fs = require('fs');
+
+// SQL.js Database Adapter to mimic better-sqlite3 API
+class SQLJSAdapter {
+    constructor(dbPath) {
+        this.dbPath = dbPath;
+        this.db = null;
+        this.isInitialized = false;
+    }
+
+    async init() {
+        if (this.isInitialized) return;
+
+        const SQL = await initSqlJs();
+
+        // Load existing database or create new one
+        if (fs.existsSync(this.dbPath)) {
+            const filebuffer = fs.readFileSync(this.dbPath);
+            this.db = new SQL.Database(filebuffer);
+        } else {
+            this.db = new SQL.Database();
+        }
+
+        this.isInitialized = true;
+    }
+
+    pragma(statement) {
+        // SQL.js doesn't support WAL mode, so we'll ignore this
+        console.log(`[SQLJSAdapter] Ignoring pragma: ${statement}`);
+    }
+
+    exec(sql) {
+        if (!this.isInitialized) throw new Error('Database not initialized');
+        this.db.exec(sql);
+        this.saveToFile();
+    }
+
+    prepare(sql) {
+        if (!this.isInitialized) throw new Error('Database not initialized');
+        const stmt = this.db.prepare(sql);
+
+        return {
+            run: (...params) => {
+                stmt.run(params);
+                this.saveToFile();
+                return { changes: this.db.getRowsModified() };
+            },
+            get: (...params) => {
+                stmt.bind(params);
+                if (stmt.step()) {
+                    const result = stmt.getAsObject();
+                    stmt.reset();
+                    return result;
+                }
+                stmt.reset();
+                return undefined;
+            },
+            all: (...params) => {
+                const results = [];
+                stmt.bind(params);
+                while (stmt.step()) {
+                    results.push(stmt.getAsObject());
+                }
+                stmt.reset();
+                return results;
+            }
+        };
+    }
+
+    transaction(fn) {
+        return () => {
+            try {
+                this.db.exec('BEGIN TRANSACTION');
+                fn();
+                this.db.exec('COMMIT');
+                this.saveToFile();
+            } catch (error) {
+                this.db.exec('ROLLBACK');
+                throw error;
+            }
+        };
+    }
+
+    saveToFile() {
+        if (this.dbPath) {
+            const data = this.db.export();
+            fs.writeFileSync(this.dbPath, Buffer.from(data));
+        }
+    }
+
+    close() {
+        if (this.db) {
+            this.saveToFile();
+            this.db.close();
+        }
+    }
+}
 
 const dbPath = databaseInitializer.getDatabasePath();
-const db = new Database(dbPath);
+const db = new SQLJSAdapter(dbPath);
 
-db.pragma('journal_mode = WAL');
+// Initialize the database
+(async () => {
+    await db.init();
+    db.pragma('journal_mode = WAL');
+})();
 
 db.exec(`
 -- users

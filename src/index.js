@@ -1,9 +1,7 @@
 try {
     const reloader = require('electron-reloader');
-    reloader(module, {
-    });
-} catch (err) {
-}
+    reloader(module, {});
+} catch (err) {}
 
 require('dotenv').config();
 
@@ -22,9 +20,19 @@ const express = require('express');
 const fetch = require('node-fetch');
 const { autoUpdater } = require('electron-updater');
 
+// Plugin System Imports
+const { PluginManager } = require('./common/services/pluginManager');
+const { PluginIntegrationManager } = require('./common/services/pluginIntegration');
+const { PluginLifecycleManager } = require('./common/services/pluginLifecycle');
+
 let WEB_PORT = 3000;
 
 const openaiSessionRef = { current: null };
+
+// Plugin System Instances
+let pluginManager;
+let pluginIntegrationManager;
+let pluginLifecycleManager;
 
 function createMainWindows() {
     createWindows();
@@ -35,16 +43,16 @@ function createMainWindows() {
 
 const deeplink = new Deeplink({
     app,
-    mainWindow: null,     
+    mainWindow: null,
     protocol: 'pickleglass',
     isDev: !app.isPackaged,
-    debugLogging: true
-  });
-  
-  deeplink.on('received', (url) => {
+    debugLogging: true,
+});
+
+deeplink.on('received', url => {
     console.log('[deeplink] received:', url);
     handleCustomUrl(url);
-  });
+});
 
 app.whenReady().then(async () => {
     const gotTheLock = app.requestSingleInstanceLock();
@@ -62,7 +70,7 @@ app.whenReady().then(async () => {
                     return;
                 }
             }
-            
+
             const windows = BrowserWindow.getAllWindows();
             if (windows.length > 0) {
                 const mainWindow = windows[0];
@@ -79,9 +87,21 @@ app.whenReady().then(async () => {
         console.log('>>> [index.js] Database initialized successfully');
     }
 
+    // Initialize Plugin System
+    try {
+        pluginManager = new PluginManager();
+        pluginIntegrationManager = new PluginIntegrationManager(pluginManager);
+        pluginLifecycleManager = new PluginLifecycleManager(pluginManager);
+
+        await pluginManager.initialize();
+        console.log('>>> [index.js] Plugin system initialized successfully');
+    } catch (error) {
+        console.error('>>> [index.js] Plugin system initialization failed:', error);
+    }
+
     WEB_PORT = await startWebStack();
     console.log('Web front-end listening on', WEB_PORT);
-    
+
     setupLiveSummaryIpcHandlers(openaiSessionRef);
     setupGeneralIpcHandlers();
 
@@ -165,7 +185,7 @@ function setupGeneralIpcHandlers() {
         try {
             await dataService.findOrCreateUser(firebaseUser);
             dataService.setCurrentUser(firebaseUser.uid);
-            
+
             BrowserWindow.getAllWindows().forEach(win => {
                 if (win !== event.sender.getOwnerBrowserWindow()) {
                     win.webContents.send('user-changed', firebaseUser);
@@ -184,7 +204,7 @@ function setupGeneralIpcHandlers() {
         return process.env.pickleglass_WEB_URL || 'http://localhost:3000';
     });
 
-    ipcMain.on('get-api-url-sync', (event) => {
+    ipcMain.on('get-api-url-sync', event => {
         event.returnValue = process.env.pickleglass_API_URL || 'http://localhost:9001';
     });
 
@@ -196,15 +216,66 @@ function setupGeneralIpcHandlers() {
         return await databaseInitializer.reset();
     });
 
+    // Hardware detection IPC handlers
+    ipcMain.handle('get-hardware-info', async () => {
+        try {
+            const HardwareDetectionService = require('./common/services/hardwareDetectionService');
+            const hardwareService = new HardwareDetectionService();
+            await hardwareService.initialize();
+            return hardwareService.getHardwareInfo();
+        } catch (error) {
+            console.error('Failed to get hardware info:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('get-optimal-device', async () => {
+        try {
+            const HardwareDetectionService = require('./common/services/hardwareDetectionService');
+            const hardwareService = new HardwareDetectionService();
+            await hardwareService.initialize();
+            return await hardwareService.selectOptimalDevice();
+        } catch (error) {
+            console.error('Failed to get optimal device:', error);
+            throw error;
+        }
+    });
+
+    ipcMain.handle('detect-npu', async () => {
+        try {
+            const HardwareDetectionService = require('./common/services/hardwareDetectionService');
+            const hardwareService = new HardwareDetectionService();
+            await hardwareService.initialize();
+            const npuInfo = hardwareService.getNPUInfo();
+            return npuInfo?.detected || false;
+        } catch (error) {
+            console.error('Failed to detect NPU:', error);
+            return false;
+        }
+    });
+
+    ipcMain.handle('detect-gpu', async () => {
+        try {
+            const HardwareDetectionService = require('./common/services/hardwareDetectionService');
+            const hardwareService = new HardwareDetectionService();
+            await hardwareService.initialize();
+            const gpuInfo = hardwareService.getGPUInfo();
+            return gpuInfo?.hasDedicatedGPU || false;
+        } catch (error) {
+            console.error('Failed to detect GPU:', error);
+            return false;
+        }
+    });
+
     ipcMain.handle('get-current-user', async () => {
         try {
             const user = await dataService.sqliteClient.getUser(dataService.currentUserId);
             if (user) {
-            return {
+                return {
                     id: user.uid,
                     name: user.display_name,
-                    isAuthenticated: user.uid !== 'default_user'
-            };
+                    isAuthenticated: user.uid !== 'default_user',
+                };
             }
             throw new Error('User not found in DataService');
         } catch (error) {
@@ -212,21 +283,20 @@ function setupGeneralIpcHandlers() {
             return {
                 id: 'default_user',
                 name: 'Default User',
-                isAuthenticated: false
+                isAuthenticated: false,
             };
         }
     });
-
 }
 
 async function handleCustomUrl(url) {
     try {
         console.log('[Custom URL] Processing URL:', url);
-        
+
         const urlObj = new URL(url);
         const action = urlObj.hostname;
         const params = Object.fromEntries(urlObj.searchParams);
-        
+
         console.log('[Custom URL] Action:', action, 'Params:', params);
 
         switch (action) {
@@ -243,13 +313,12 @@ async function handleCustomUrl(url) {
                 if (header) {
                     if (header.isMinimized()) header.restore();
                     header.focus();
-                    
+
                     const targetUrl = `http://localhost:${WEB_PORT}/${action}`;
                     console.log(`[Custom URL] Navigating webview to: ${targetUrl}`);
                     header.webContents.loadURL(targetUrl);
                 }
         }
-
     } catch (error) {
         console.error('[Custom URL] Error parsing URL:', error);
     }
@@ -265,7 +334,7 @@ async function handleFirebaseAuthCallback(params) {
         if (header) {
             header.webContents.send('login-successful', {
                 error: 'authentication_failed',
-                message: 'ID token not provided in deep link.'
+                message: 'ID token not provided in deep link.',
             });
         }
         return;
@@ -278,12 +347,10 @@ async function handleFirebaseAuthCallback(params) {
         const response = await fetch(functionUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: idToken })
+            body: JSON.stringify({ token: idToken }),
         });
 
         const data = await response.json();
-
-
 
         if (!response.ok || !data.success) {
             throw new Error(data.error || 'Failed to exchange token.');
@@ -296,7 +363,7 @@ async function handleFirebaseAuthCallback(params) {
             uid: user.uid,
             email: user.email || 'no-email@example.com',
             displayName: user.name || 'User',
-            photoURL: user.picture
+            photoURL: user.picture,
         };
 
         await dataService.findOrCreateUser(firebaseUser);
@@ -309,13 +376,13 @@ async function handleFirebaseAuthCallback(params) {
                 console.log('[Auth] Fetching virtual key for:', firebaseUser.email);
                 const vKey = await getVirtualKeyByEmail(firebaseUser.email, firebaseUser.idToken);
                 console.log('[Auth] Virtual key fetched successfully');
-                
+
                 await setApiKey(vKey);
                 console.log('[Auth] Virtual key saved successfully');
-                
+
                 const { setCurrentFirebaseUser } = require('./electron/windowManager');
                 setCurrentFirebaseUser(firebaseUser);
-                
+
                 const { windowPool } = require('./electron/windowManager');
                 windowPool.forEach(win => {
                     if (win && !win.isDestroyed()) {
@@ -334,12 +401,12 @@ async function handleFirebaseAuthCallback(params) {
         if (header) {
             if (header.isMinimized()) header.restore();
             header.focus();
-            
+
             console.log('[Auth] Sending custom token to renderer for sign-in.');
-            header.webContents.send('login-successful', { 
-                customToken: customToken, 
+            header.webContents.send('login-successful', {
+                customToken: customToken,
                 user: firebaseUser,
-                success: true 
+                success: true,
             });
 
             BrowserWindow.getAllWindows().forEach(win => {
@@ -349,20 +416,18 @@ async function handleFirebaseAuthCallback(params) {
             });
 
             console.log('[Auth] Firebase authentication completed successfully');
-
         } else {
             console.error('[Auth] Header window not found after getting custom token.');
         }
-        
     } catch (error) {
         console.error('[Auth] Error during custom token exchange:', error);
-        
+
         const { windowPool } = require('./electron/windowManager');
         const header = windowPool.get('header');
         if (header) {
-            header.webContents.send('login-successful', { 
+            header.webContents.send('login-successful', {
                 error: 'authentication_failed',
-                message: error.message 
+                message: error.message,
             });
         }
     }
@@ -370,22 +435,22 @@ async function handleFirebaseAuthCallback(params) {
 
 function handlePersonalizeFromUrl(params) {
     console.log('[Custom URL] Personalize params:', params);
-    
+
     const { windowPool } = require('./electron/windowManager');
     const header = windowPool.get('header');
-    
+
     if (header) {
         if (header.isMinimized()) header.restore();
         header.focus();
-        
+
         const personalizeUrl = `http://localhost:${WEB_PORT}/settings`;
         console.log(`[Custom URL] Navigating to personalize page: ${personalizeUrl}`);
         header.webContents.loadURL(personalizeUrl);
-        
+
         BrowserWindow.getAllWindows().forEach(win => {
             win.webContents.send('enter-personalize-mode', {
                 message: 'Personalization mode activated',
-                params: params
+                params: params,
             });
         });
     } else {
@@ -393,111 +458,108 @@ function handlePersonalizeFromUrl(params) {
     }
 }
 
-
 async function startWebStack() {
-  console.log('NODE_ENV =', process.env.NODE_ENV); 
-  const isDev = !app.isPackaged;
+    console.log('NODE_ENV =', process.env.NODE_ENV);
+    const isDev = !app.isPackaged;
 
-  const getAvailablePort = () => {
-    return new Promise((resolve, reject) => {
-      const server = require('net').createServer();
-      server.listen(0, (err) => {
-        if (err) reject(err);
-        const port = server.address().port;
-        server.close(() => resolve(port));
-      });
+    const getAvailablePort = () => {
+        return new Promise((resolve, reject) => {
+            const server = require('net').createServer();
+            server.listen(0, err => {
+                if (err) reject(err);
+                const port = server.address().port;
+                server.close(() => resolve(port));
+            });
+        });
+    };
+
+    const apiPort = await getAvailablePort();
+    const frontendPort = await getAvailablePort();
+
+    console.log(`🔧 Allocated ports: API=${apiPort}, Frontend=${frontendPort}`);
+
+    process.env.pickleglass_API_PORT = apiPort.toString();
+    process.env.pickleglass_API_URL = `http://localhost:${apiPort}`;
+    process.env.pickleglass_WEB_PORT = frontendPort.toString();
+    process.env.pickleglass_WEB_URL = `http://localhost:${frontendPort}`;
+
+    console.log(`🌍 Environment variables set:`, {
+        pickleglass_API_URL: process.env.pickleglass_API_URL,
+        pickleglass_WEB_URL: process.env.pickleglass_WEB_URL,
     });
-  };
 
-  const apiPort = await getAvailablePort();
-  const frontendPort = await getAvailablePort();
+    const createBackendApp = require('../pickleglass_web/backend_node');
+    const nodeApi = createBackendApp();
 
-  console.log(`🔧 Allocated ports: API=${apiPort}, Frontend=${frontendPort}`);
+    const staticDir = app.isPackaged ? path.join(process.resourcesPath, 'out') : path.join(__dirname, '..', 'pickleglass_web', 'out');
 
-  process.env.pickleglass_API_PORT = apiPort.toString();
-  process.env.pickleglass_API_URL = `http://localhost:${apiPort}`;
-  process.env.pickleglass_WEB_PORT = frontendPort.toString();
-  process.env.pickleglass_WEB_URL = `http://localhost:${frontendPort}`;
+    const fs = require('fs');
 
-  console.log(`🌍 Environment variables set:`, {
-    pickleglass_API_URL: process.env.pickleglass_API_URL,
-    pickleglass_WEB_URL: process.env.pickleglass_WEB_URL
-  });
-
-  const createBackendApp = require('../pickleglass_web/backend_node');
-  const nodeApi = createBackendApp();
-
-  const staticDir = app.isPackaged
-    ? path.join(process.resourcesPath, 'out')
-    : path.join(__dirname, '..', 'pickleglass_web', 'out');
-
-  const fs = require('fs');
-
-  if (!fs.existsSync(staticDir)) {
-    console.error(`============================================================`);
-    console.error(`[ERROR] Frontend build directory not found!`);
-    console.error(`Path: ${staticDir}`);
-    console.error(`Please run 'npm run build' inside the 'pickleglass_web' directory first.`);
-    console.error(`============================================================`);
-    app.quit();
-    return;
-  }
-
-  const runtimeConfig = {
-    API_URL: `http://localhost:${apiPort}`,
-    WEB_URL: `http://localhost:${frontendPort}`,
-    timestamp: Date.now()
-  };
-  
-  // 쓰기 가능한 임시 폴더에 런타임 설정 파일 생성
-  const tempDir = app.getPath('temp');
-  const configPath = path.join(tempDir, 'runtime-config.json');
-  fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2));
-  console.log(`📝 Runtime config created in temp location: ${configPath}`);
-
-  const frontSrv = express();
-  
-  // 프론트엔드에서 /runtime-config.json을 요청하면 임시 폴더의 파일을 제공
-  frontSrv.get('/runtime-config.json', (req, res) => {
-    res.sendFile(configPath);
-  });
-
-  frontSrv.use((req, res, next) => {
-    if (req.path.indexOf('.') === -1 && req.path !== '/') {
-      const htmlPath = path.join(staticDir, req.path + '.html');
-      if (fs.existsSync(htmlPath)) {
-        return res.sendFile(htmlPath);
-      }
+    if (!fs.existsSync(staticDir)) {
+        console.error(`============================================================`);
+        console.error(`[ERROR] Frontend build directory not found!`);
+        console.error(`Path: ${staticDir}`);
+        console.error(`Please run 'npm run build' inside the 'pickleglass_web' directory first.`);
+        console.error(`============================================================`);
+        app.quit();
+        return;
     }
-    next();
-  });
-  
-  frontSrv.use(express.static(staticDir));
-  
-  const frontendServer = await new Promise((resolve, reject) => {
-    const server = frontSrv.listen(frontendPort, '127.0.0.1', () => resolve(server));
-    server.on('error', reject);
-    app.once('before-quit', () => server.close());
-  });
 
-  console.log(`✅ Frontend server started on http://localhost:${frontendPort}`);
+    const runtimeConfig = {
+        API_URL: `http://localhost:${apiPort}`,
+        WEB_URL: `http://localhost:${frontendPort}`,
+        timestamp: Date.now(),
+    };
 
-  const apiSrv = express();
-  apiSrv.use(nodeApi);
+    // 쓰기 가능한 임시 폴더에 런타임 설정 파일 생성
+    const tempDir = app.getPath('temp');
+    const configPath = path.join(tempDir, 'runtime-config.json');
+    fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2));
+    console.log(`📝 Runtime config created in temp location: ${configPath}`);
 
-  const apiServer = await new Promise((resolve, reject) => {
-    const server = apiSrv.listen(apiPort, '127.0.0.1', () => resolve(server));
-    server.on('error', reject);
-    app.once('before-quit', () => server.close());
-  });
+    const frontSrv = express();
 
-  console.log(`✅ API server started on http://localhost:${apiPort}`);
+    // 프론트엔드에서 /runtime-config.json을 요청하면 임시 폴더의 파일을 제공
+    frontSrv.get('/runtime-config.json', (req, res) => {
+        res.sendFile(configPath);
+    });
 
-  console.log(`🚀 All services ready:`);
-  console.log(`   Frontend: http://localhost:${frontendPort}`);
-  console.log(`   API:      http://localhost:${apiPort}`);
+    frontSrv.use((req, res, next) => {
+        if (req.path.indexOf('.') === -1 && req.path !== '/') {
+            const htmlPath = path.join(staticDir, req.path + '.html');
+            if (fs.existsSync(htmlPath)) {
+                return res.sendFile(htmlPath);
+            }
+        }
+        next();
+    });
 
-  return frontendPort;
+    frontSrv.use(express.static(staticDir));
+
+    const frontendServer = await new Promise((resolve, reject) => {
+        const server = frontSrv.listen(frontendPort, '127.0.0.1', () => resolve(server));
+        server.on('error', reject);
+        app.once('before-quit', () => server.close());
+    });
+
+    console.log(`✅ Frontend server started on http://localhost:${frontendPort}`);
+
+    const apiSrv = express();
+    apiSrv.use(nodeApi);
+
+    const apiServer = await new Promise((resolve, reject) => {
+        const server = apiSrv.listen(apiPort, '127.0.0.1', () => resolve(server));
+        server.on('error', reject);
+        app.once('before-quit', () => server.close());
+    });
+
+    console.log(`✅ API server started on http://localhost:${apiPort}`);
+
+    console.log(`🚀 All services ready:`);
+    console.log(`   Frontend: http://localhost:${frontendPort}`);
+    console.log(`   API:      http://localhost:${apiPort}`);
+
+    return frontendPort;
 }
 
 // Auto-update initialization
@@ -516,16 +578,15 @@ function initAutoUpdater() {
         });
 
         // Immediately check for updates & notify
-        autoUpdater.checkForUpdatesAndNotify()
-            .catch(err => {
-                console.error('[AutoUpdater] Error checking for updates:', err);
-            });
+        autoUpdater.checkForUpdatesAndNotify().catch(err => {
+            console.error('[AutoUpdater] Error checking for updates:', err);
+        });
 
         autoUpdater.on('checking-for-update', () => {
             console.log('[AutoUpdater] Checking for updates…');
         });
 
-        autoUpdater.on('update-available', (info) => {
+        autoUpdater.on('update-available', info => {
             console.log('[AutoUpdater] Update available:', info.version);
         });
 
@@ -533,11 +594,11 @@ function initAutoUpdater() {
             console.log('[AutoUpdater] Application is up-to-date');
         });
 
-        autoUpdater.on('error', (err) => {
+        autoUpdater.on('error', err => {
             console.error('[AutoUpdater] Error while updating:', err);
         });
 
-        autoUpdater.on('update-downloaded', (info) => {
+        autoUpdater.on('update-downloaded', info => {
             console.log(`[AutoUpdater] Update downloaded: ${info.version}`);
 
             const dialogOpts = {
@@ -546,10 +607,10 @@ function initAutoUpdater() {
                 title: 'Update Available',
                 message: 'A new version of Glass is ready to be installed.',
                 defaultId: 0,
-                cancelId: 1
+                cancelId: 1,
             };
 
-            dialog.showMessageBox(dialogOpts).then((returnValue) => {
+            dialog.showMessageBox(dialogOpts).then(returnValue => {
                 // returnValue.response 0 is for 'Install Now'
                 if (returnValue.response === 0) {
                     autoUpdater.quitAndInstall();
