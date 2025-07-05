@@ -1,0 +1,100 @@
+{
+  "id": "local-ai-model-manager",
+  "name": "Local AI Model Manager",
+  "version": "1.0.0",
+  "description": "Comprehensive local AI model management system with Hugging Face integration and AMD Gaia compatibility",
+  "author": {
+    "name": "Glass Assistant Team",
+    "email": "team@glass-assistant.com",
+    "url": "https://glass-assistant.com"
+  },
+  "main": "index.js",
+  "homepage": "https://glass-assistant.com/plugins/local-ai-model-manager",
+  "repository": "https://github.com/glass-assistant/local-ai-model-manager",
+  "license": "Apache-2.0",
+  "keywords": [
+    "glass-assistant",
+    "plugin",
+    "ai-models",
+    "hugging-face",
+    "amd-gaia",
+    "local-inference",
+    "npu-acceleration"
+  ],
+  "engines": {
+    "glass-assistant": ">=1.0.0",
+    "node": ">=16.0.0"
+  },
+  "permissions": [
+    "ai:access",
+    "ai:middleware",
+    "ai:models",
+    "storage:read",
+    "storage:write",
+    "network:http",
+    "system:hardware",
+    "ui:extension"
+  ],
+  "extensionPoints": [
+    "ai-pipeline",
+    "model-management",
+    "ui-components",
+    "amd-gaia-integration"
+  ],
+  "config": {
+    "defaultSettings": {
+      "enabled": true,
+      "autoStart": true,
+      "modelStoragePath": "~/.glass-assistant/models",
+      "maxModelCacheSize": "10GB",
+      "preferredInferenceDevice": "auto",
+      "enableNPUAcceleration": true,
+      "huggingFaceApiEnabled": true,
+      "autoModelUpdates": false,
+      "performanceMonitoring": true
+    },
+    "schema": {
+      "modelStoragePath": {
+        "type": "string",
+        "description": "Directory path for storing downloaded models"
+      },
+      "maxModelCacheSize": {
+        "type": "string",
+        "description": "Maximum disk space for model cache (e.g., '10GB', '500MB')"
+      },
+      "preferredInferenceDevice": {
+        "type": "string",
+        "enum": ["auto", "npu", "gpu", "cpu"],
+        "description": "Preferred device for model inference"
+      },
+      "enableNPUAcceleration": {
+        "type": "boolean",
+        "description": "Enable AMD NPU acceleration when available"
+      }
+    }
+  },
+  "dependencies": {
+    "@huggingface/hub": "^0.15.0",
+    "@huggingface/transformers": "^2.17.0",
+    "onnxruntime-node": "^1.16.0",
+    "crypto-js": "^4.2.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "eslint": "^8.0.0"
+  },
+  "scripts": {
+    "test": "jest",
+    "lint": "eslint .",
+    "build": "node scripts/build.js"
+  },
+  "files": [
+    "index.js",
+    "services/",
+    "ui/",
+    "database/",
+    "utils/",
+    "README.md",
+    "LICENSE"
+  ]
+}

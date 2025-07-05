@@ -20,7 +20,7 @@ declare global {
   }
 }
 
-type Tab = 'profile' | 'privacy' | 'billing'
+type Tab = 'profile' | 'privacy' | 'ai-models' | 'billing'
 type BillingCycle = 'monthly' | 'annually'
 
 export default function SettingsPage() {
@@ -93,6 +93,7 @@ export default function SettingsPage() {
   const tabs = [
     { id: 'profile' as Tab, name: 'Personal Profile', href: '/settings' },
     { id: 'privacy' as Tab, name: 'Data & Privacy', href: '/settings/privacy' },
+    { id: 'ai-models' as Tab, name: 'AI Models', href: '/settings/ai-models' },
     { id: 'billing' as Tab, name: 'Billing', href: '/settings/billing' },
   ]
 

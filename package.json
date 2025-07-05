@@ -29,8 +29,8 @@
     },
     "license": "Apache-2.0",
     "dependencies": {
+        "@esbuild/win32-x64": "^0.25.5",
         "axios": "^1.10.0",
-        "better-sqlite3": "^9.4.3",
         "cors": "^2.8.5",
         "dotenv": "^17.0.0",
         "electron-deeplink": "^1.0.10",
@@ -45,7 +45,9 @@
         "openai": "^4.70.0",
         "react-hot-toast": "^2.5.2",
         "sharp": "^0.34.2",
+        "sql.js": "^1.13.0",
         "sqlite3": "^5.1.7",
+        "systeminformation": "^5.27.7",
         "wait-on": "^8.0.3",
         "ws": "^8.18.0"
     },
