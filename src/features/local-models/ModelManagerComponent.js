@@ -30,34 +30,36 @@ export class ModelManagerComponent extends LitElement {
         }
 
         .manager-title {
-            font-size: 16px;
-            font-weight: 600;
+            font-size: 11px;
+            font-weight: 500;
             margin: 0;
+            color: rgba(255, 255, 255, 0.9);
         }
 
         .status-indicator {
             display: flex;
             align-items: center;
-            gap: 6px;
-            font-size: 12px;
+            gap: 4px;
+            font-size: 10px;
+            color: rgba(255, 255, 255, 0.6);
         }
 
         .status-dot {
-            width: 8px;
-            height: 8px;
+            width: 6px;
+            height: 6px;
             border-radius: 50%;
         }
 
         .status-active {
-            background: #22c55e;
+            background: rgba(52, 199, 89, 0.8);
         }
 
         .status-inactive {
-            background: #ef4444;
+            background: rgba(255, 59, 48, 0.8);
         }
 
         .status-loading {
-            background: #f59e0b;
+            background: rgba(255, 149, 0, 0.8);
             animation: pulse 1.5s infinite;
         }
 
@@ -67,57 +69,71 @@ export class ModelManagerComponent extends LitElement {
         }
 
         .quick-actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-            margin-bottom: 16px;
+            display: flex;
+            gap: 4px;
+            margin-bottom: 8px;
         }
 
         .action-btn {
-            padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.1);
+            flex: 1;
+            padding: 4px 6px;
+            background: rgba(0, 0, 0, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 6px;
+            border-radius: 4px;
             color: white;
-            font-size: 12px;
-            font-weight: 500;
+            font-size: 10px;
+            font-weight: 400;
             cursor: pointer;
             transition: all 0.2s ease;
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 6px;
+            gap: 3px;
         }
 
         .action-btn:hover {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(255, 255, 255, 0.1);
             border-color: rgba(255, 255, 255, 0.3);
         }
 
         .action-btn:disabled {
-            opacity: 0.5;
+            opacity: 0.4;
             cursor: not-allowed;
         }
 
         .action-btn.primary {
-            background: rgba(79, 70, 229, 0.3);
-            border-color: rgba(79, 70, 229, 0.5);
+            background: rgba(0, 122, 255, 0.2);
+            border-color: rgba(0, 122, 255, 0.4);
         }
 
         .action-btn.primary:hover {
-            background: rgba(79, 70, 229, 0.4);
+            background: rgba(0, 122, 255, 0.3);
         }
 
         .model-list {
-            max-height: 200px;
+            max-height: 120px;
             overflow-y: auto;
+        }
+
+        .model-list::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        .model-list::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 2px;
+        }
+
+        .model-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 2px;
         }
 
         .model-item {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 8px 0;
+            padding: 4px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
 
@@ -130,28 +146,29 @@ export class ModelManagerComponent extends LitElement {
         }
 
         .model-name {
-            font-size: 13px;
-            font-weight: 500;
-            margin-bottom: 2px;
+            font-size: 10px;
+            font-weight: 400;
+            margin-bottom: 1px;
+            color: white;
         }
 
         .model-details {
-            font-size: 11px;
-            color: rgba(255, 255, 255, 0.6);
+            font-size: 9px;
+            color: rgba(255, 255, 255, 0.5);
         }
 
         .model-actions {
             display: flex;
-            gap: 4px;
+            gap: 2px;
         }
 
         .model-btn {
-            padding: 4px 8px;
-            background: none;
+            padding: 2px 6px;
+            background: rgba(0, 0, 0, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 4px;
             color: white;
-            font-size: 10px;
+            font-size: 9px;
             cursor: pointer;
             transition: all 0.2s ease;
         }
@@ -161,52 +178,52 @@ export class ModelManagerComponent extends LitElement {
         }
 
         .model-btn.active {
-            background: rgba(34, 197, 94, 0.2);
-            border-color: rgba(34, 197, 94, 0.4);
-            color: #22c55e;
+            background: rgba(52, 199, 89, 0.2);
+            border-color: rgba(52, 199, 89, 0.4);
+            color: rgba(52, 199, 89, 0.9);
         }
 
         .model-btn.danger {
-            border-color: rgba(239, 68, 68, 0.4);
-            color: #ef4444;
+            border-color: rgba(255, 59, 48, 0.4);
+            color: rgba(255, 59, 48, 0.9);
         }
 
         .model-btn.danger:hover {
-            background: rgba(239, 68, 68, 0.1);
+            background: rgba(255, 59, 48, 0.1);
         }
 
         .hardware-status {
             display: flex;
-            gap: 8px;
-            margin-bottom: 12px;
+            gap: 4px;
+            margin-bottom: 6px;
         }
 
         .hardware-chip {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 500;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-size: 8px;
+            font-weight: 400;
         }
 
         .hardware-available {
-            background: rgba(34, 197, 94, 0.2);
-            color: #22c55e;
+            background: rgba(52, 199, 89, 0.2);
+            color: rgba(52, 199, 89, 0.9);
         }
 
         .hardware-unavailable {
-            background: rgba(239, 68, 68, 0.2);
-            color: #ef4444;
+            background: rgba(255, 59, 48, 0.2);
+            color: rgba(255, 59, 48, 0.9);
         }
 
         .empty-state {
             text-align: center;
-            padding: 24px 16px;
-            color: rgba(255, 255, 255, 0.6);
+            padding: 12px 8px;
+            color: rgba(255, 255, 255, 0.5);
         }
 
         .empty-state-icon {
-            font-size: 32px;
-            margin-bottom: 8px;
+            font-size: 16px;
+            margin-bottom: 4px;
         }
 
         .progress-bar {
@@ -225,31 +242,31 @@ export class ModelManagerComponent extends LitElement {
         }
 
         .notification {
-            padding: 8px 12px;
-            border-radius: 6px;
-            margin-bottom: 12px;
-            font-size: 12px;
+            padding: 4px 6px;
+            border-radius: 4px;
+            margin-bottom: 6px;
+            font-size: 9px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 4px;
         }
 
         .notification-success {
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            color: #22c55e;
+            background: rgba(52, 199, 89, 0.1);
+            border: 1px solid rgba(52, 199, 89, 0.3);
+            color: rgba(52, 199, 89, 0.9);
         }
 
         .notification-error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #ef4444;
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            color: rgba(255, 59, 48, 0.9);
         }
 
         .notification-warning {
-            background: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.3);
-            color: #f59e0b;
+            background: rgba(255, 149, 0, 0.1);
+            border: 1px solid rgba(255, 149, 0, 0.3);
+            color: rgba(255, 149, 0, 0.9);
         }
     `;
 
@@ -429,7 +446,7 @@ export class ModelManagerComponent extends LitElement {
         return html`
             <div class="model-manager">
                 <div class="manager-header">
-                    <h3 class="manager-title">Local AI Models</h3>
+                    <h3 class="manager-title">Local AI Models Manager</h3>
                     <div class="status-indicator">
                         <div class="status-dot ${this.activeModel ? 'status-active' : 'status-inactive'}"></div>
                         <span>${this.activeModel ? 'Active' : 'Inactive'}</span>
@@ -456,10 +473,10 @@ export class ModelManagerComponent extends LitElement {
 
                 <div class="quick-actions">
                     <button class="action-btn primary" @click=${this.openFullSetup}>
-                        🔧 Full Setup
+                        Setup
                     </button>
                     <button class="action-btn" @click=${this.openModelBrowser}>
-                        📦 Browse Models
+                        Browse
                     </button>
                 </div>
 
@@ -467,9 +484,9 @@ export class ModelManagerComponent extends LitElement {
                     ${this.installedModels.length === 0 ? html`
                         <div class="empty-state">
                             <div class="empty-state-icon">🤖</div>
-                            <div>No models installed</div>
-                            <div style="font-size: 10px; margin-top: 4px;">
-                                Click "Browse Models" to get started
+                            <div style="font-size: 9px;">No models</div>
+                            <div style="font-size: 8px; margin-top: 2px; color: rgba(255, 255, 255, 0.4);">
+                                Click Browse to start
                             </div>
                         </div>
                     ` : this.installedModels.map(model => html`

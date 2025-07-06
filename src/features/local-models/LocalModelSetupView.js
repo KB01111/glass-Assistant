@@ -11,42 +11,89 @@ export class LocalModelSetupView extends LitElement {
         :host {
             display: block;
             width: 100%;
-            min-height: 100vh;
+            height: 100%;
             color: white;
-            background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
         }
 
         .setup-container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 12px;
+            outline: 0.5px rgba(255, 255, 255, 0.3) solid;
+            outline-offset: -1px;
+            backdrop-filter: blur(1px);
+            box-sizing: border-box;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .setup-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.15);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border-radius: 12px;
+            filter: blur(10px);
+            z-index: -1;
         }
 
         .header {
-            text-align: center;
-            margin-bottom: 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background: transparent;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
         }
 
         .header h1 {
-            font-size: 32px;
-            font-weight: 600;
-            margin: 0 0 10px 0;
-            background: linear-gradient(135deg, #4f46e5, #7c3aed);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            font-size: 13px;
+            font-weight: 500;
+            margin: 0;
+            color: rgba(255, 255, 255, 0.9);
         }
 
         .header p {
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.7);
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.6);
             margin: 0;
+        }
+
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+        }
+
+        .content-area::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .content-area::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 3px;
+        }
+
+        .content-area::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
         }
 
         .setup-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 30px;
-            margin-bottom: 40px;
+            gap: 16px;
+            margin-bottom: 16px;
         }
 
         @media (max-width: 768px) {
@@ -56,30 +103,32 @@ export class LocalModelSetupView extends LitElement {
         }
 
         .setup-card {
-            background: rgba(255, 255, 255, 0.05);
+            background: rgba(0, 0, 0, 0.2);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            padding: 24px;
-            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 12px;
         }
 
         .card-header {
             display: flex;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 8px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .card-icon {
-            width: 24px;
-            height: 24px;
-            margin-right: 12px;
+            width: 16px;
+            height: 16px;
+            margin-right: 6px;
             opacity: 0.8;
         }
 
         .card-title {
-            font-size: 18px;
-            font-weight: 600;
+            font-size: 11px;
+            font-weight: 500;
             margin: 0;
+            color: rgba(255, 255, 255, 0.8);
         }
 
         .hardware-status {
@@ -156,46 +205,48 @@ export class LocalModelSetupView extends LitElement {
         }
 
         .btn {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
+            padding: 4px 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: white;
+            font-size: 10px;
+            font-weight: 400;
             cursor: pointer;
             transition: all 0.2s ease;
         }
 
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
         .btn-primary {
-            background: #4f46e5;
-            color: white;
+            background: rgba(0, 122, 255, 0.2);
+            border-color: rgba(0, 122, 255, 0.4);
         }
 
         .btn-primary:hover {
-            background: #4338ca;
+            background: rgba(0, 122, 255, 0.3);
         }
 
         .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.15);
+            background: rgba(0, 0, 0, 0.2);
+            border-color: rgba(255, 255, 255, 0.2);
         }
 
         .btn-danger {
-            background: rgba(239, 68, 68, 0.2);
-            color: #ef4444;
-            border: 1px solid rgba(239, 68, 68, 0.3);
+            background: rgba(255, 59, 48, 0.2);
+            color: rgba(255, 59, 48, 0.9);
+            border-color: rgba(255, 59, 48, 0.3);
         }
 
         .btn-danger:hover {
-            background: rgba(239, 68, 68, 0.3);
+            background: rgba(255, 59, 48, 0.3);
         }
 
         .btn:disabled {
-            opacity: 0.5;
+            opacity: 0.4;
             cursor: not-allowed;
         }
 
@@ -266,16 +317,17 @@ export class LocalModelSetupView extends LitElement {
         .tabs {
             display: flex;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            margin-bottom: 24px;
+            margin-bottom: 12px;
+            padding: 0 16px;
         }
 
         .tab {
-            padding: 12px 24px;
+            padding: 8px 12px;
             background: none;
             border: none;
             color: rgba(255, 255, 255, 0.6);
-            font-size: 14px;
-            font-weight: 500;
+            font-size: 11px;
+            font-weight: 400;
             cursor: pointer;
             border-bottom: 2px solid transparent;
             transition: all 0.2s ease;
@@ -283,7 +335,7 @@ export class LocalModelSetupView extends LitElement {
 
         .tab.active {
             color: white;
-            border-bottom-color: #4f46e5;
+            border-bottom-color: rgba(0, 122, 255, 0.8);
         }
 
         .tab:hover {
@@ -291,30 +343,31 @@ export class LocalModelSetupView extends LitElement {
         }
 
         .notification {
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin-bottom: 16px;
+            padding: 6px 8px;
+            border-radius: 4px;
+            margin-bottom: 8px;
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 6px;
+            font-size: 10px;
         }
 
         .notification-success {
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            color: #22c55e;
+            background: rgba(52, 199, 89, 0.1);
+            border: 1px solid rgba(52, 199, 89, 0.3);
+            color: rgba(52, 199, 89, 0.9);
         }
 
         .notification-error {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #ef4444;
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid rgba(255, 59, 48, 0.3);
+            color: rgba(255, 59, 48, 0.9);
         }
 
         .notification-warning {
-            background: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.3);
-            color: #f59e0b;
+            background: rgba(255, 149, 0, 0.1);
+            border: 1px solid rgba(255, 149, 0, 0.3);
+            color: rgba(255, 149, 0, 0.9);
         }
 
         .loading-spinner {
@@ -569,38 +622,41 @@ export class LocalModelSetupView extends LitElement {
         return html`
             <div class="setup-container">
                 <div class="header">
-                    <h1>Local AI Model Setup</h1>
-                    <p>Configure and manage your local AI models with hardware acceleration</p>
-                </div>
-
-                ${this.notifications.map(notification => html`
-                    <div class="notification notification-${notification.type}">
-                        <span>${notification.message}</span>
-                        <button @click=${() => this.removeNotification(notification.id)} style="margin-left: auto; background: none; border: none; color: inherit; cursor: pointer;">×</button>
+                    <div>
+                        <h1>Local AI Models</h1>
+                        <p>Hardware acceleration & model management</p>
                     </div>
-                `)}
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-secondary" @click=${this.handleBack} style="padding: 4px 8px; font-size: 10px;">
+                            Back
+                        </button>
+                        <button class="btn btn-primary" @click=${this.saveConfiguration} style="padding: 4px 8px; font-size: 10px;">
+                            Save
+                        </button>
+                    </div>
+                </div>
 
                 <div class="tabs">
                     <button class="tab ${this.activeTab === 'hardware' ? 'active' : ''}" @click=${() => this.activeTab = 'hardware'}>
-                        Hardware Status
+                        Hardware
                     </button>
                     <button class="tab ${this.activeTab === 'models' ? 'active' : ''}" @click=${() => this.activeTab = 'models'}>
-                        Model Management
+                        Models
                     </button>
                     <button class="tab ${this.activeTab === 'config' ? 'active' : ''}" @click=${() => this.activeTab = 'config'}>
-                        Configuration
+                        Config
                     </button>
                 </div>
 
-                ${this.renderTabContent()}
+                <div class="content-area">
+                    ${this.notifications.map(notification => html`
+                        <div class="notification notification-${notification.type}">
+                            <span>${notification.message}</span>
+                            <button @click=${() => this.removeNotification(notification.id)} style="margin-left: auto; background: none; border: none; color: inherit; cursor: pointer; font-size: 12px;">×</button>
+                        </div>
+                    `)}
 
-                <div class="action-buttons">
-                    <button class="btn btn-secondary" @click=${this.handleBack}>
-                        Back to Settings
-                    </button>
-                    <button class="btn btn-primary" @click=${this.saveConfiguration}>
-                        Save Configuration
-                    </button>
+                    ${this.renderTabContent()}
                 </div>
             </div>
         `;
