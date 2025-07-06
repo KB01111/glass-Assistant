@@ -549,6 +549,316 @@ class PluginSecurityManager {
             getLimits: () => ({ ...limits }),
         };
     }
+
+    // ==================== ENHANCED SECURITY FOR OPTIMIZED PLUGINS ====================
+
+    /**
+     * Validate shared resource access permissions
+     */
+    validateSharedResourceAccess(pluginId, resourceId, accessType) {
+        const plugin = this.getPluginMetadata(pluginId);
+        if (!plugin) {
+            throw new Error(`Plugin ${pluginId} not found`);
+        }
+
+        const requiredPermissions = this.getRequiredPermissions(resourceId, accessType);
+
+        // Check if plugin has necessary permissions
+        for (const permission of requiredPermissions) {
+            if (!plugin.permissions?.includes(permission) && !plugin.permissions?.includes('*')) {
+                throw new Error(`Plugin ${pluginId} lacks permission: ${permission}`);
+            }
+        }
+
+        // Additional security checks for hardware access
+        if (accessType.includes('hardware')) {
+            return this.validateHardwareAccess(pluginId, resourceId);
+        }
+
+        // Check resource-specific access policies
+        return this.validateResourcePolicy(pluginId, resourceId, accessType);
+    }
+
+    /**
+     * Get required permissions for resource access
+     */
+    getRequiredPermissions(resourceId, accessType) {
+        const permissions = [];
+
+        // Base resource permission
+        permissions.push('resources:shared');
+
+        // Access type specific permissions
+        switch (accessType) {
+            case 'read':
+                permissions.push('resources:read');
+                break;
+            case 'write':
+                permissions.push('resources:write');
+                break;
+            case 'hardware:npu':
+                permissions.push('hardware:accelerated', 'hardware:npu');
+                break;
+            case 'hardware:gpu':
+                permissions.push('hardware:accelerated', 'hardware:gpu');
+                break;
+            case 'memory:shared':
+                permissions.push('memory:shared');
+                break;
+            case 'embeddings:read':
+                permissions.push('embeddings:shared', 'embeddings:read');
+                break;
+            case 'embeddings:write':
+                permissions.push('embeddings:shared', 'embeddings:write');
+                break;
+        }
+
+        // Resource type specific permissions
+        if (resourceId.startsWith('model:')) {
+            permissions.push('models:access');
+        } else if (resourceId.startsWith('embedding:')) {
+            permissions.push('embeddings:shared');
+        } else if (resourceId.startsWith('cache:')) {
+            permissions.push('cache:access');
+        }
+
+        return permissions;
+    }
+
+    /**
+     * Validate hardware access permissions
+     */
+    validateHardwareAccess(pluginId, resourceId) {
+        const plugin = this.getPluginMetadata(pluginId);
+
+        // Check if plugin is trusted for hardware access
+        if (!this.isTrustedForHardware(plugin)) {
+            throw new Error(`Plugin ${pluginId} not trusted for hardware access`);
+        }
+
+        // Check hardware-specific restrictions
+        if (resourceId.includes('npu')) {
+            return this.validateNPUAccess(pluginId);
+        } else if (resourceId.includes('gpu')) {
+            return this.validateGPUAccess(pluginId);
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if plugin is trusted for hardware access
+     */
+    isTrustedForHardware(plugin) {
+        // Trusted publishers can access hardware
+        if (this.trustedPublishers.has(plugin.publisher)) {
+            return true;
+        }
+
+        // Check if plugin has been explicitly approved for hardware access
+        if (plugin.hardwareApproved === true) {
+            return true;
+        }
+
+        // Check plugin signature and certification
+        if (plugin.certified === true && plugin.signature) {
+            return this.verifyPluginSignature(plugin);
+        }
+
+        return false;
+    }
+
+    /**
+     * Validate NPU access
+     */
+    validateNPUAccess(pluginId) {
+        const plugin = this.getPluginMetadata(pluginId);
+
+        // Check NPU-specific permissions
+        if (!plugin.permissions?.includes('hardware:npu') && !plugin.permissions?.includes('*')) {
+            throw new Error(`Plugin ${pluginId} lacks NPU access permission`);
+        }
+
+        // Check if NPU access is explicitly restricted
+        if (plugin.restrictions?.npu === false) {
+            throw new Error(`Plugin ${pluginId} is restricted from NPU access`);
+        }
+
+        return true;
+    }
+
+    /**
+     * Validate GPU access
+     */
+    validateGPUAccess(pluginId) {
+        const plugin = this.getPluginMetadata(pluginId);
+
+        // Check GPU-specific permissions
+        if (!plugin.permissions?.includes('hardware:gpu') && !plugin.permissions?.includes('*')) {
+            throw new Error(`Plugin ${pluginId} lacks GPU access permission`);
+        }
+
+        return true;
+    }
+
+    /**
+     * Validate resource access policy
+     */
+    validateResourcePolicy(pluginId, resourceId, accessType) {
+        const plugin = this.getPluginMetadata(pluginId);
+
+        // Check resource-specific policies
+        const resourcePolicies = plugin.resourcePolicies || {};
+        const policy = resourcePolicies[resourceId];
+
+        if (policy) {
+            // Check if access type is allowed
+            if (policy.allowedAccess && !policy.allowedAccess.includes(accessType)) {
+                throw new Error(`Plugin ${pluginId} not allowed ${accessType} access to resource ${resourceId}`);
+            }
+
+            // Check time-based restrictions
+            if (policy.timeRestrictions) {
+                const now = new Date();
+                const currentHour = now.getHours();
+
+                if (policy.timeRestrictions.startHour && policy.timeRestrictions.endHour) {
+                    if (currentHour < policy.timeRestrictions.startHour ||
+                        currentHour > policy.timeRestrictions.endHour) {
+                        throw new Error(`Plugin ${pluginId} access to ${resourceId} restricted during current time`);
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Create secure sandbox with shared resource access
+     */
+    createSecureSandbox(metadata, sharedResources = []) {
+        // Get base sandbox
+        const sandbox = this.createSandbox(metadata);
+
+        // Add controlled access to shared resources
+        sandbox.sharedResources = this.createSecureResourceProxy(sharedResources, metadata.id);
+
+        // Add hardware access if permitted
+        if (this.isTrustedForHardware(metadata)) {
+            sandbox.hardwareAccess = this.createHardwareProxy(metadata.id);
+        }
+
+        return sandbox;
+    }
+
+    /**
+     * Create secure proxy for shared resources
+     */
+    createSecureResourceProxy(sharedResources, pluginId) {
+        const proxy = {};
+
+        for (const resourceId of sharedResources) {
+            proxy[resourceId] = {
+                access: (accessType = 'read') => {
+                    this.validateSharedResourceAccess(pluginId, resourceId, accessType);
+                    return this.getResourceManager().accessResource(resourceId, pluginId, accessType);
+                },
+
+                release: () => {
+                    return this.getResourceManager().releaseResource(resourceId, pluginId);
+                }
+            };
+        }
+
+        return proxy;
+    }
+
+    /**
+     * Create hardware access proxy
+     */
+    createHardwareProxy(pluginId) {
+        return {
+            npu: {
+                isAvailable: () => {
+                    return this.getHardwareManager().isNPUAvailable();
+                },
+
+                runInference: async (modelId, inputs, options = {}) => {
+                    this.validateHardwareAccess(pluginId, 'npu');
+                    return await this.getHardwareManager().runNPUInference(modelId, inputs, {
+                        ...options,
+                        pluginId
+                    });
+                }
+            },
+
+            gpu: {
+                isAvailable: () => {
+                    return this.getHardwareManager().isGPUAvailable();
+                },
+
+                runInference: async (modelId, inputs, options = {}) => {
+                    this.validateHardwareAccess(pluginId, 'gpu');
+                    return await this.getHardwareManager().runGPUInference(modelId, inputs, {
+                        ...options,
+                        pluginId
+                    });
+                }
+            }
+        };
+    }
+
+    /**
+     * Verify plugin signature for hardware access
+     */
+    verifyPluginSignature(plugin) {
+        try {
+            if (!plugin.signature || !plugin.publicKey) {
+                return false;
+            }
+
+            // Verify digital signature
+            const verifier = crypto.createVerify('SHA256');
+            verifier.update(JSON.stringify(plugin.manifest));
+
+            return verifier.verify(plugin.publicKey, plugin.signature, 'base64');
+        } catch (error) {
+            console.error('Plugin signature verification failed:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Get plugin metadata (placeholder - should be implemented by plugin manager)
+     */
+    getPluginMetadata(pluginId) {
+        // This should be injected or accessed from plugin manager
+        return this.pluginManager?.registry?.get(pluginId) || null;
+    }
+
+    /**
+     * Get resource manager (placeholder - should be injected)
+     */
+    getResourceManager() {
+        return this.resourceManager || null;
+    }
+
+    /**
+     * Get hardware manager (placeholder - should be injected)
+     */
+    getHardwareManager() {
+        return this.hardwareManager || null;
+    }
+
+    /**
+     * Set dependencies for enhanced security
+     */
+    setDependencies(pluginManager, resourceManager, hardwareManager) {
+        this.pluginManager = pluginManager;
+        this.resourceManager = resourceManager;
+        this.hardwareManager = hardwareManager;
+    }
 }
 
 module.exports = { PluginSecurityManager };

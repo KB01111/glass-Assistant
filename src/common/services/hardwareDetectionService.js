@@ -314,41 +314,224 @@ class HardwareDetectionService extends EventEmitter {
 
     async detectAMDGaia() {
         try {
+            const gaiaInfo = {
+                detected: false,
+                version: null,
+                capabilities: {
+                    directML: false,
+                    onnxRuntime: false,
+                    tensorFlow: false,
+                    pytorch: false
+                },
+                performance: {
+                    topsInt8: 0,
+                    topsInt16: 0,
+                    topsFp16: 0,
+                    memoryBandwidth: 0,
+                    powerConsumption: 0
+                },
+                driverVersion: null,
+                firmwareVersion: null,
+                healthStatus: 'unknown'
+            };
+
             // Check CPU brand first for Ryzen AI processors
             const cpuBrand = this.hardwareInfo.cpu?.brand?.toLowerCase() || '';
-            if (cpuBrand.includes('ryzen ai') || cpuBrand.includes('ryzen 9 hx 370')) {
+            const isRyzenAI = cpuBrand.includes('ryzen ai') ||
+                             cpuBrand.includes('ryzen 9 hx 370') ||
+                             cpuBrand.includes('ryzen 7 8840') ||
+                             cpuBrand.includes('ryzen 5 8640');
+
+            if (isRyzenAI) {
                 console.log('[HardwareDetection] AMD Ryzen AI processor detected - NPU likely present');
-                return true;
+                gaiaInfo.detected = true;
+                gaiaInfo.version = this.determineGaiaVersion(cpuBrand);
             }
 
-            // Check for AMD Gaia NPU via device enumeration
+            // Enhanced device detection for Windows
             if (process.platform === 'win32') {
                 try {
-                    // Try PowerShell as alternative to wmic
-                    const devices = execSync('powershell "Get-WmiObject -Class Win32_PnPEntity | Select-Object Name | Out-String"', { encoding: 'utf8' });
-                    return devices.toLowerCase().includes('gaia') ||
-                           devices.toLowerCase().includes('amd neural') ||
-                           devices.toLowerCase().includes('ryzen ai') ||
-                           devices.toLowerCase().includes('npu');
-                } catch {
+                    // Check for AMD NPU devices
+                    const devices = execSync('powershell "Get-WmiObject -Class Win32_PnPEntity | Where-Object {$_.Name -like \'*AMD*\' -or $_.Name -like \'*NPU*\' -or $_.Name -like \'*Neural*\'} | Select-Object Name, DeviceID, Status | Out-String"', { encoding: 'utf8' });
+
+                    if (devices.toLowerCase().includes('gaia') ||
+                        devices.toLowerCase().includes('amd neural') ||
+                        devices.toLowerCase().includes('ryzen ai') ||
+                        devices.toLowerCase().includes('npu')) {
+                        gaiaInfo.detected = true;
+                        gaiaInfo.healthStatus = devices.toLowerCase().includes('ok') ? 'healthy' : 'warning';
+                    }
+
+                    // Check for DirectML support
+                    gaiaInfo.capabilities.directML = await this.checkDirectMLSupport();
+
+                    // Check driver version
+                    gaiaInfo.driverVersion = await this.getAMDDriverVersion();
+
+                } catch (error) {
+                    console.warn('[HardwareDetection] Windows AMD Gaia detection failed:', error.message);
                     // Fallback: check if it's a known Ryzen AI processor
-                    return cpuBrand.includes('ryzen ai');
+                    gaiaInfo.detected = isRyzenAI;
                 }
             } else if (process.platform === 'linux') {
                 try {
-                    const lspci = execSync('lspci', { encoding: 'utf8' });
-                    return lspci.toLowerCase().includes('gaia') ||
-                           lspci.toLowerCase().includes('amd neural') ||
-                           lspci.toLowerCase().includes('ryzen ai');
-                } catch {
-                    return cpuBrand.includes('ryzen ai');
+                    // Check for AMD NPU in Linux
+                    const lspci = execSync('lspci -v', { encoding: 'utf8' });
+                    const hasAMDNPU = lspci.toLowerCase().includes('amd') &&
+                                     (lspci.toLowerCase().includes('neural') ||
+                                      lspci.toLowerCase().includes('npu') ||
+                                      lspci.toLowerCase().includes('ai'));
+
+                    if (hasAMDNPU) {
+                        gaiaInfo.detected = true;
+                        gaiaInfo.healthStatus = 'healthy';
+                    }
+
+                    // Check for ROCm support (AMD's compute platform)
+                    gaiaInfo.capabilities.onnxRuntime = await this.checkROCmSupport();
+
+                } catch (error) {
+                    console.warn('[HardwareDetection] Linux AMD Gaia detection failed:', error.message);
+                    gaiaInfo.detected = isRyzenAI;
                 }
             }
-            return cpuBrand.includes('ryzen ai');
+
+            // Set performance characteristics based on detected version
+            if (gaiaInfo.detected) {
+                this.setGaiaPerformanceSpecs(gaiaInfo);
+
+                // Check framework support
+                gaiaInfo.capabilities.onnxRuntime = await this.checkONNXRuntimeSupport();
+                gaiaInfo.capabilities.tensorFlow = await this.checkTensorFlowSupport();
+                gaiaInfo.capabilities.pytorch = await this.checkPyTorchSupport();
+            }
+
+            return gaiaInfo.detected ? gaiaInfo : false;
+        } catch (error) {
+            console.error('[HardwareDetection] AMD Gaia detection error:', error);
+            return false;
+        }
+    }
+
+    determineGaiaVersion(cpuBrand) {
+        if (cpuBrand.includes('hx 370') || cpuBrand.includes('8840') || cpuBrand.includes('8640')) {
+            return 'Gaia 1.0'; // First generation
+        }
+        return 'Gaia 1.0'; // Default for now
+    }
+
+    setGaiaPerformanceSpecs(gaiaInfo) {
+        // AMD Gaia NPU performance specifications
+        switch (gaiaInfo.version) {
+            case 'Gaia 1.0':
+                gaiaInfo.performance = {
+                    topsInt8: 16, // 16 TOPS INT8
+                    topsInt16: 8, // 8 TOPS INT16
+                    topsFp16: 4,  // 4 TOPS FP16
+                    memoryBandwidth: 120, // GB/s (estimated)
+                    powerConsumption: 15 // Watts (estimated)
+                };
+                break;
+            default:
+                gaiaInfo.performance = {
+                    topsInt8: 10,
+                    topsInt16: 5,
+                    topsFp16: 2.5,
+                    memoryBandwidth: 100,
+                    powerConsumption: 12
+                };
+        }
+    }
+
+    async checkDirectMLSupport() {
+        try {
+            if (process.platform === 'win32') {
+                // Check if DirectML is available
+                const dxdiag = execSync('dxdiag /t temp_dxdiag.txt && type temp_dxdiag.txt && del temp_dxdiag.txt', { encoding: 'utf8' });
+                return dxdiag.toLowerCase().includes('directml') || dxdiag.toLowerCase().includes('machine learning');
+            }
+            return false;
         } catch {
-            // Final fallback: check CPU brand
-            const cpuBrand = this.hardwareInfo.cpu?.brand?.toLowerCase() || '';
-            return cpuBrand.includes('ryzen ai');
+            return false;
+        }
+    }
+
+    async getAMDDriverVersion() {
+        try {
+            if (process.platform === 'win32') {
+                const driverInfo = execSync('powershell "Get-WmiObject -Class Win32_SystemDriver | Where-Object {$_.Name -like \'*AMD*\'} | Select-Object Name, Version | Out-String"', { encoding: 'utf8' });
+                const versionMatch = driverInfo.match(/Version\s*:\s*([0-9.]+)/);
+                return versionMatch ? versionMatch[1] : null;
+            }
+            return null;
+        } catch {
+            return null;
+        }
+    }
+
+    async checkROCmSupport() {
+        try {
+            if (process.platform === 'linux') {
+                execSync('which rocm-smi', { encoding: 'utf8' });
+                return true;
+            }
+            return false;
+        } catch {
+            return false;
+        }
+    }
+
+    async checkONNXRuntimeSupport() {
+        try {
+            // Check if ONNX Runtime with DirectML/ROCm is available
+            const nodeModules = require('path').join(process.cwd(), 'node_modules');
+            const fs = require('fs');
+
+            // Check for onnxruntime-node
+            if (fs.existsSync(require('path').join(nodeModules, 'onnxruntime-node'))) {
+                return true;
+            }
+
+            return false;
+        } catch {
+            return false;
+        }
+    }
+
+    async checkTensorFlowSupport() {
+        try {
+            // Check for TensorFlow with DirectML support
+            const nodeModules = require('path').join(process.cwd(), 'node_modules');
+            const fs = require('fs');
+
+            if (fs.existsSync(require('path').join(nodeModules, '@tensorflow/tfjs-node-gpu'))) {
+                return true;
+            }
+
+            return false;
+        } catch {
+            return false;
+        }
+    }
+
+    async checkPyTorchSupport() {
+        try {
+            // Check for PyTorch with ROCm support (Linux) or DirectML (Windows)
+            if (process.platform === 'win32') {
+                // Check for PyTorch with DirectML
+                return false; // Not commonly available yet
+            } else if (process.platform === 'linux') {
+                // Check for PyTorch with ROCm
+                try {
+                    execSync('python3 -c "import torch; print(torch.version.hip)"', { encoding: 'utf8' });
+                    return true;
+                } catch {
+                    return false;
+                }
+            }
+            return false;
+        } catch {
+            return false;
         }
     }
 
@@ -589,6 +772,113 @@ class HardwareDetectionService extends EventEmitter {
 
     getSystemInfo() {
         return this.hardwareInfo.system;
+    }
+
+    // ==================== HARDWARE HEALTH MONITORING ====================
+
+    async monitorHardwareHealth() {
+        try {
+            const healthReport = {
+                timestamp: Date.now(),
+                overall: 'healthy',
+                components: {
+                    cpu: await this.checkCPUHealth(),
+                    gpu: await this.checkGPUHealth(),
+                    npu: await this.checkNPUHealth(),
+                    memory: await this.checkMemoryHealth(),
+                    thermal: await this.checkThermalHealth()
+                },
+                recommendations: []
+            };
+
+            // Determine overall health
+            const componentStates = Object.values(healthReport.components);
+            if (componentStates.some(state => state.status === 'critical')) {
+                healthReport.overall = 'critical';
+            } else if (componentStates.some(state => state.status === 'warning')) {
+                healthReport.overall = 'warning';
+            }
+
+            // Generate recommendations
+            healthReport.recommendations = this.generateHealthRecommendations(healthReport.components);
+
+            this.emit('healthUpdate', healthReport);
+            return healthReport;
+        } catch (error) {
+            console.error('[HardwareDetection] Health monitoring failed:', error);
+            return {
+                timestamp: Date.now(),
+                overall: 'unknown',
+                error: error.message
+            };
+        }
+    }
+
+    async checkCPUHealth() {
+        try {
+            const cpuLoad = await si.currentLoad();
+            const cpuTemp = await si.cpuTemperature();
+
+            return {
+                status: cpuLoad.currentLoad > 90 ? 'warning' : 'healthy',
+                load: cpuLoad.currentLoad,
+                temperature: cpuTemp.main || 0,
+                cores: cpuLoad.cpus.map(cpu => ({
+                    load: cpu.load,
+                    status: cpu.load > 95 ? 'warning' : 'healthy'
+                }))
+            };
+        } catch (error) {
+            return { status: 'unknown', error: error.message };
+        }
+    }
+
+    async checkNPUHealth() {
+        try {
+            if (!this.hardwareInfo.npu?.detected) {
+                return { status: 'not_available' };
+            }
+
+            // For AMD Gaia NPU
+            if (this.hardwareInfo.npu.capabilities?.amdGaia) {
+                const gaiaHealth = await this.checkAMDGaiaHealth();
+                return gaiaHealth;
+            }
+
+            return { status: 'healthy' };
+        } catch (error) {
+            return { status: 'unknown', error: error.message };
+        }
+    }
+
+    async checkAMDGaiaHealth() {
+        try {
+            const health = {
+                status: 'healthy',
+                temperature: 0,
+                powerConsumption: 0,
+                utilization: 0,
+                driverStatus: 'ok'
+            };
+
+            if (process.platform === 'win32') {
+                try {
+                    // Check device status in Device Manager
+                    const deviceStatus = execSync('powershell "Get-WmiObject -Class Win32_PnPEntity | Where-Object {$_.Name -like \'*AMD*\' -and ($_.Name -like \'*NPU*\' -or $_.Name -like \'*Neural*\')} | Select-Object Name, Status | Out-String"', { encoding: 'utf8' });
+
+                    if (deviceStatus.toLowerCase().includes('error') || deviceStatus.toLowerCase().includes('warning')) {
+                        health.status = 'warning';
+                        health.driverStatus = 'warning';
+                    }
+                } catch (error) {
+                    health.status = 'unknown';
+                }
+            }
+
+            return health;
+        } catch (error) {
+            return { status: 'unknown', error: error.message };
+        }
     }
 
     async selectOptimalDevice() {

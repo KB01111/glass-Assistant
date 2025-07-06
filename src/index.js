@@ -25,6 +25,9 @@ const { PluginManager } = require('./common/services/pluginManager');
 const { PluginIntegrationManager } = require('./common/services/pluginIntegration');
 const { PluginLifecycleManager } = require('./common/services/pluginLifecycle');
 
+// Local Model Management
+const { getLocalModelHandlers } = require('./main/handlers/localModelHandlers');
+
 let WEB_PORT = 3000;
 
 const openaiSessionRef = { current: null };
@@ -33,6 +36,7 @@ const openaiSessionRef = { current: null };
 let pluginManager;
 let pluginIntegrationManager;
 let pluginLifecycleManager;
+let localModelHandlers;
 
 function createMainWindows() {
     createWindows();
@@ -104,6 +108,14 @@ app.whenReady().then(async () => {
 
     setupLiveSummaryIpcHandlers(openaiSessionRef);
     setupGeneralIpcHandlers();
+
+    // Initialize local model handlers
+    try {
+        localModelHandlers = getLocalModelHandlers();
+        console.log('>>> [index.js] Local model handlers initialized successfully');
+    } catch (error) {
+        console.error('>>> [index.js] Local model handlers initialization failed:', error);
+    }
 
     createMainWindows();
 
@@ -214,6 +226,14 @@ function setupGeneralIpcHandlers() {
 
     ipcMain.handle('reset-database', async () => {
         return await databaseInitializer.reset();
+    });
+
+    // Navigation handlers
+    ipcMain.on('navigate-to-view', (event, viewName) => {
+        const window = event.sender.getOwnerBrowserWindow();
+        if (window) {
+            window.webContents.send('navigate-to-view', viewName);
+        }
     });
 
     // Hardware detection IPC handlers

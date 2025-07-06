@@ -398,6 +398,198 @@ class PluginAPI extends EventEmitter {
         };
     }
 
+    // ==================== RESOURCE SHARING ====================
+
+    /**
+     * Register shared resource provider
+     */
+    registerSharedResourceProvider(resourceType, provider) {
+        this.requirePermission('resources:shared');
+
+        const resourceManager = this.pluginManager.getResourceManager();
+        return resourceManager.registerProvider(resourceType, provider, this.pluginId);
+    }
+
+    /**
+     * Share a resource with other plugins
+     */
+    shareResource(resourceId, data, policyName = 'shared-write') {
+        this.requirePermission('resources:shared');
+
+        const resourceManager = this.pluginManager.getResourceManager();
+        return resourceManager.shareResource(resourceId, data, policyName, this.pluginId);
+    }
+
+    /**
+     * Access a shared resource
+     */
+    accessSharedResource(resourceId, accessType = 'read') {
+        this.requirePermission('resources:shared');
+
+        const resourceManager = this.pluginManager.getResourceManager();
+        return resourceManager.accessResource(resourceId, this.pluginId, accessType);
+    }
+
+    /**
+     * Release a shared resource reference
+     */
+    releaseSharedResource(resourceId) {
+        this.requirePermission('resources:shared');
+
+        const resourceManager = this.pluginManager.getResourceManager();
+        return resourceManager.releaseResource(resourceId, this.pluginId);
+    }
+
+    /**
+     * Access shared memory pool
+     */
+    getSharedMemoryPool(size) {
+        this.requirePermission('memory:shared');
+
+        return this.pluginManager.memoryManager.allocateShared(this.pluginId, size);
+    }
+
+    /**
+     * Allocate shared memory
+     */
+    allocateSharedMemory(size, alignment = 8, dataType = 'uint8') {
+        this.requirePermission('memory:shared');
+
+        const memoryPool = this.pluginManager.getSharedMemoryPool();
+        return memoryPool.allocate(size, alignment, dataType);
+    }
+
+    /**
+     * Deallocate shared memory
+     */
+    deallocateSharedMemory(offset) {
+        this.requirePermission('memory:shared');
+
+        const memoryPool = this.pluginManager.getSharedMemoryPool();
+        return memoryPool.deallocate(offset);
+    }
+
+    // ==================== HARDWARE ACCELERATION ====================
+
+    /**
+     * Access hardware-accelerated inference
+     */
+    async performAcceleratedInference(modelId, inputs, options = {}) {
+        this.requirePermission('hardware:accelerated');
+
+        const hardwareManager = this.pluginManager.getHardwareManager();
+        return await hardwareManager.runInference(modelId, inputs, {
+            preferredDevice: options.device || 'npu',
+            fallbackDevices: options.fallbackDevices || ['gpu', 'cpu'],
+            pluginId: this.pluginId,
+            batchSize: options.batchSize || 32,
+            precision: options.precision || 'fp16'
+        });
+    }
+
+    /**
+     * Check hardware capabilities
+     */
+    getHardwareCapabilities() {
+        this.requirePermission('hardware:accelerated');
+
+        const hardwareManager = this.pluginManager.getHardwareManager();
+        return hardwareManager.getCapabilities();
+    }
+
+    /**
+     * Get optimal hardware configuration
+     */
+    getOptimalHardwareConfig(workloadType) {
+        this.requirePermission('hardware:accelerated');
+
+        const hardwareManager = this.pluginManager.getHardwareManager();
+        return hardwareManager.getOptimalConfig(workloadType);
+    }
+
+    // ==================== BATCH PROCESSING ====================
+
+    /**
+     * Register batch processor
+     */
+    registerBatchProcessor(processorType, handler, options = {}) {
+        this.requirePermission('processing:batch');
+
+        const batchManager = this.pluginManager.getBatchManager();
+        return batchManager.registerProcessor(processorType, handler, this.pluginId, options);
+    }
+
+    /**
+     * Submit batch processing job
+     */
+    async submitBatchJob(processorType, data, options = {}) {
+        this.requirePermission('processing:batch');
+
+        const batchManager = this.pluginManager.getBatchManager();
+        return await batchManager.submitJob(processorType, data, {
+            ...options,
+            pluginId: this.pluginId
+        });
+    }
+
+    /**
+     * Get batch processing status
+     */
+    getBatchJobStatus(jobId) {
+        this.requirePermission('processing:batch');
+
+        const batchManager = this.pluginManager.getBatchManager();
+        return batchManager.getJobStatus(jobId);
+    }
+
+    // ==================== EMBEDDING CACHE ====================
+
+    /**
+     * Access shared embedding cache
+     */
+    async getSharedEmbedding(documentId, chunkId) {
+        this.requirePermission('embeddings:shared');
+
+        const cacheManager = this.pluginManager.getEmbeddingCache();
+        return await cacheManager.getEmbedding(documentId, chunkId);
+    }
+
+    /**
+     * Store embedding in shared cache
+     */
+    async storeSharedEmbedding(documentId, chunkId, embedding, metadata = {}) {
+        this.requirePermission('embeddings:shared');
+
+        const cacheManager = this.pluginManager.getEmbeddingCache();
+        return await cacheManager.storeEmbedding(documentId, chunkId, embedding, {
+            ...metadata,
+            pluginId: this.pluginId
+        });
+    }
+
+    /**
+     * Search embeddings by similarity
+     */
+    async searchSimilarEmbeddings(queryEmbedding, options = {}) {
+        this.requirePermission('embeddings:shared');
+
+        const cacheManager = this.pluginManager.getEmbeddingCache();
+        return await cacheManager.searchSimilar(queryEmbedding, {
+            ...options,
+            pluginId: this.pluginId
+        });
+    }
+
+    /**
+     * Get embedding cache statistics
+     */
+    getEmbeddingCacheStats() {
+        this.requirePermission('embeddings:shared');
+
+        const cacheManager = this.pluginManager.getEmbeddingCache();
+        return cacheManager.getStats();
+    }
+
     // ==================== CLEANUP ====================
 
     /**
@@ -581,6 +773,14 @@ const PERMISSIONS = {
     NOTIFICATIONS_SHOW: 'notifications:show',
     PLUGINS_COMMUNICATE: 'plugins:communicate',
     PLUGINS_RECEIVE: 'plugins:receive',
+
+    // Resource Sharing Permissions
+    RESOURCES_SHARED: 'resources:shared',
+    MEMORY_SHARED: 'memory:shared',
+    PROCESSING_BATCH: 'processing:batch',
+    HARDWARE_ACCELERATED: 'hardware:accelerated',
+    EMBEDDINGS_SHARED: 'embeddings:shared',
+    CACHE_ACCESS: 'cache:access',
 
     // Special Permissions
     ALL: '*', // Grants all permissions (use with caution)
