@@ -1,16 +1,20 @@
 const os = require('os');
+const EventEmitter = require('events');
 
 /**
- * Performance Monitor Service
- * 
- * Monitors and tracks performance metrics for local AI models:
- * - Inference time tracking
- * - Memory usage monitoring
- * - Device utilization metrics
- * - Performance comparisons and recommendations
+ * Enhanced Performance Monitor Service
+ *
+ * Monitors and tracks performance metrics for local AI models with hardware-specific optimizations:
+ * - Inference time tracking with device-specific metrics
+ * - Memory usage monitoring with shared memory pool integration
+ * - Hardware utilization metrics (NPU, GPU, CPU)
+ * - Performance comparisons and optimization recommendations
+ * - Real-time alerting and adaptive configuration
  */
-class PerformanceMonitor {
+class PerformanceMonitor extends EventEmitter {
     constructor(options = {}) {
+        super();
+
         this.enabled = options.enabled !== false;
         this.logger = options.logger || console;
         this.metrics = new Map();
@@ -19,9 +23,38 @@ class PerformanceMonitor {
             cpu: [],
             memory: [],
             gpu: [],
-            npu: []
+            npu: [],
+            sharedMemory: [],
+            network: []
         };
         this.monitoringInterval = null;
+
+        // Enhanced monitoring options
+        this.options = {
+            monitoringIntervalMs: 5000,
+            metricsRetentionMs: 3600000, // 1 hour
+            enableHardwareSpecificMetrics: true,
+            enableMemoryPoolMonitoring: true,
+            enableNetworkMonitoring: false,
+            alertThresholds: {
+                cpuUsage: 90,
+                memoryUsage: 85,
+                inferenceLatency: 5000,
+                errorRate: 0.05
+            },
+            ...options
+        };
+
+        // Hardware-specific trackers
+        this.hardwareTrackers = new Map();
+        this.performanceBaselines = new Map();
+        this.optimizationRecommendations = [];
+        this.alertHistory = [];
+
+        // Integration points
+        this.hardwareManager = options.hardwareManager;
+        this.memoryPool = options.memoryPool;
+        this.fallbackManager = options.fallbackManager;
     }
 
     /**
@@ -413,7 +446,7 @@ class PerformanceMonitor {
 
         for (const [modelId, metrics] of Object.entries(comparisons)) {
             const value = metrics[metric];
-            if ((direction === 'min' && value < bestValue) || 
+            if ((direction === 'min' && value < bestValue) ||
                 (direction === 'max' && value > bestValue)) {
                 bestValue = value;
                 bestModel = modelId;
@@ -421,6 +454,166 @@ class PerformanceMonitor {
         }
 
         return { modelId: bestModel, value: bestValue };
+    }
+
+    // ==================== ENHANCED MONITORING METHODS ====================
+
+    /**
+     * Monitor hardware-specific metrics
+     */
+    async monitorHardwareMetrics() {
+        try {
+            const metrics = {
+                timestamp: Date.now(),
+                cpu: await this.getCPUMetrics(),
+                memory: await this.getMemoryMetrics(),
+                gpu: await this.getGPUMetrics(),
+                npu: await this.getNPUMetrics(),
+                sharedMemory: await this.getSharedMemoryMetrics(),
+                network: this.options.enableNetworkMonitoring ? await this.getNetworkMetrics() : null
+            };
+
+            // Store metrics
+            this.storeSystemMetrics(metrics);
+
+            // Check for alerts
+            this.checkAlertThresholds(metrics);
+
+            // Update hardware trackers
+            this.updateHardwareTrackers(metrics);
+
+            this.emit('metrics-collected', metrics);
+
+            return metrics;
+
+        } catch (error) {
+            this.logger.error('Hardware metrics collection failed:', error);
+            return null;
+        }
+    }
+
+    async getCPUMetrics() {
+        const cpus = os.cpus();
+        const loadAvg = os.loadavg();
+
+        return {
+            usage: process.cpuUsage(),
+            loadAverage: loadAvg,
+            coreCount: cpus.length,
+            frequency: cpus[0]?.speed || 0,
+            temperature: await this.getCPUTemperature()
+        };
+    }
+
+    async getMemoryMetrics() {
+        const memInfo = process.memoryUsage();
+        const systemMem = {
+            total: os.totalmem(),
+            free: os.freemem()
+        };
+
+        return {
+            process: memInfo,
+            system: systemMem,
+            usage: (systemMem.total - systemMem.free) / systemMem.total,
+            pressure: this.calculateMemoryPressure(memInfo, systemMem)
+        };
+    }
+
+    async getGPUMetrics() {
+        try {
+            if (this.hardwareManager) {
+                const gpuInfo = await this.hardwareManager.getGPUInfo();
+                return {
+                    available: !!gpuInfo,
+                    utilization: gpuInfo?.utilization || 0,
+                    memoryUsed: gpuInfo?.memoryUsed || 0,
+                    memoryTotal: gpuInfo?.memoryTotal || 0,
+                    temperature: gpuInfo?.temperature || 0
+                };
+            }
+            return { available: false };
+        } catch (error) {
+            return { available: false, error: error.message };
+        }
+    }
+
+    async getNPUMetrics() {
+        try {
+            if (this.hardwareManager) {
+                const npuInfo = await this.hardwareManager.getNPUInfo();
+                return {
+                    available: !!npuInfo?.detected,
+                    utilization: npuInfo?.utilization || 0,
+                    powerConsumption: npuInfo?.powerConsumption || 0,
+                    temperature: npuInfo?.temperature || 0,
+                    throughput: npuInfo?.throughput || 0
+                };
+            }
+            return { available: false };
+        } catch (error) {
+            return { available: false, error: error.message };
+        }
+    }
+
+    async getSharedMemoryMetrics() {
+        try {
+            if (this.memoryPool) {
+                const stats = this.memoryPool.getStats();
+                return {
+                    totalSize: stats.totalSize,
+                    usedBytes: stats.usedBytes,
+                    freeBytes: stats.freeBytes,
+                    utilizationRatio: stats.utilizationRatio,
+                    fragmentationRatio: stats.fragmentationRatio,
+                    allocatedBlocks: stats.allocatedBlockCount,
+                    freeBlocks: stats.freeBlockCount
+                };
+            }
+            return { available: false };
+        } catch (error) {
+            return { available: false, error: error.message };
+        }
+    }
+
+    async getNetworkMetrics() {
+        const networkInterfaces = os.networkInterfaces();
+        const metrics = {
+            interfaces: {},
+            totalBytesReceived: 0,
+            totalBytesSent: 0
+        };
+
+        for (const [name, interfaces] of Object.entries(networkInterfaces)) {
+            for (const iface of interfaces) {
+                if (!iface.internal) {
+                    metrics.interfaces[name] = {
+                        address: iface.address,
+                        family: iface.family,
+                        mac: iface.mac
+                    };
+                }
+            }
+        }
+
+        return metrics;
+    }
+
+    async getCPUTemperature() {
+        try {
+            // This would require platform-specific implementation
+            // For now, return null
+            return null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    calculateMemoryPressure(processMemory, systemMemory) {
+        const processUsage = processMemory.heapUsed / processMemory.heapTotal;
+        const systemUsage = (systemMemory.total - systemMemory.free) / systemMemory.total;
+
+        return Math.max(processUsage, systemUsage);
     }
 
     /**

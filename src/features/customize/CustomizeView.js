@@ -1,4 +1,5 @@
 import { html, css, LitElement } from '../../assets/lit-core-2.7.4.min.js';
+import '../local-models/ModelManagerComponent.js';
 
 export class CustomizeView extends LitElement {
     static styles = css`
@@ -934,11 +935,14 @@ export class CustomizeView extends LitElement {
                     `)}
                 </div>
 
+                <!-- Local AI Models Section -->
+                <model-manager-component></model-manager-component>
+
                 <div class="buttons-section">
                     <button class="settings-button full-width" @click=${this.handlePersonalize}>
                         <span>Personalize / Meeting Notes</span>
                     </button>
-                    
+
                     <div class="move-buttons">
                         <button class="settings-button half-width" @click=${this.handleMoveLeft}>
                             <span>← Move</span>
