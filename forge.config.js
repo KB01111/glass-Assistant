@@ -13,6 +13,56 @@ module.exports = {
         name: 'Glass',
         icon: 'src/assets/logo',
         appBundleId: 'com.pickle.glass',
+        ignore: [
+            // Test dependencies - more specific patterns
+            /node_modules\/@jest\/.*$/,
+            /node_modules\/jest\/.*$/,
+            /node_modules\/jsdom\/.*$/,
+            // Test files
+            /tests\//,
+            /\.test\./,
+            /\.spec\./,
+            // Development files
+            /\.git/,
+            /\.vscode/,
+            /\.idea/,
+            // Build artifacts
+            /dist/,
+            /build-output/,
+            /dist-new/,
+            // Temporary files
+            /\.tmp/,
+            /\.cache/,
+            // Documentation
+            /docs\//,
+            /README\.md$/,
+            // Scripts
+            /scripts\//,
+            // Docker files
+            /Dockerfile/,
+            /docker-compose/,
+            // CI/CD
+            /\.github/,
+            /\.gitlab/,
+            // Additional test-related exclusions
+            /coverage\//,
+            /\.nyc_output/,
+            /test-results\.json$/,
+            /validation-report\.json$/,
+            // Exclude specific test files
+            (path) => {
+                // Exclude Jest and test-related dependencies
+                if (path.includes('@jest/globals') ||
+                    path.includes('jest') ||
+                    path.includes('jsdom') ||
+                    path.includes('/tests/') ||
+                    path.includes('.test.') ||
+                    path.includes('.spec.')) {
+                    return true;
+                }
+                return false;
+            }
+        ],
         asarUnpack: [
             "**/*.node",
             "**/*.dylib",

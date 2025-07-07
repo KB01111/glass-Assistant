@@ -6,6 +6,10 @@ appId: com.pickle.glass
 # The user-facing application name
 productName: Glass
 
+# Custom output directory to avoid file locks
+directories:
+  output: dist-new
+
 # Publish configuration for GitHub releases
 publish:
   provider: github
@@ -19,6 +23,15 @@ files:
   - package.json
   - pickleglass_web/backend_node/**/*
   - '!**/node_modules/electron/**'
+  - '!**/node_modules/@jest/**'
+  - '!**/node_modules/jest/**'
+  - '!**/node_modules/jsdom/**'
+  - '!tests/**'
+  - '!**/*.test.*'
+  - '!**/*.spec.*'
+  - '!coverage/**'
+  - '!test-results.json'
+  - '!validation-report.json'
   - public/build/**/*
 
 # Additional resources to be copied into the app's resources directory
